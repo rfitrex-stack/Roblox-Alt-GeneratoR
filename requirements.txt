@@ -2,4 +2,3 @@ discord.py
 selenium
 password_strength
 webdriver-manager
-asyncio
