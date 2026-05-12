@@ -1,4 +1,5 @@
-cv2
-password_strength
+discord.py
 selenium
-requests
+password_strength
+webdriver-manager
+asyncio
