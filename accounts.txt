@@ -1,1 +1,2 @@
-This is where the usernames and password get written down by the softwae Format Username:Password
+test:test
+test2:test2
