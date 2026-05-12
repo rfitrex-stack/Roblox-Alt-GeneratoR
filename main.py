@@ -1,7 +1,5 @@
 import os
 import json
-import secrets
-import random
 import discord
 from datetime import datetime, date
 from discord import app_commands, Embed, Color
@@ -17,7 +15,9 @@ tree = app_commands.CommandTree(bot)
 # ==================== CONFIG ====================
 
 DAILY_FILE = "daily_counter.json"
-BOT_VERSION = "1.2"
+ACCOUNTS_FILE = "accounts.txt"
+INDEX_FILE = "account_index.json"
+BOT_VERSION = "1.3"
 DEVELOPER = "RealFitrex"
 GROUP = "Zjednoczeni Ideą"
 
@@ -57,23 +57,42 @@ def load_daily_count_and_increment():
     save_daily_data(data)
     return current_count, new_count
 
-# ==================== GENERATORS ====================
+# ==================== ACCOUNT SYSTEM ====================
 
-def generate_password(length=16):
-    chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
-    return "".join(secrets.choice(chars) for _ in range(length))
+def load_accounts():
+    if not os.path.exists(ACCOUNTS_FILE):
+        return []
+    with open(ACCOUNTS_FILE, "r") as f:
+        lines = [line.strip() for line in f.readlines() if line.strip()]
+    return lines
 
-def generate_email():
-    names = ["user", "player", "gamer", "pro", "dark", "light", "shadow", "storm", "fire", "ice"]
-    domains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "proton.me"]
-    name = random.choice(names) + str(random.randint(100, 9999))
-    domain = random.choice(domains)
-    return f"{name}@{domain}"
+def get_current_index():
+    if not os.path.exists(INDEX_FILE):
+        return 0
+    try:
+        with open(INDEX_FILE, "r") as f:
+            data = json.load(f)
+        return data.get("index", 0)
+    except:
+        return 0
 
-def generate_username():
-    prefixes = ["Dark", "Light", "Shadow", "Storm", "Fire", "Ice", "Night", "Swift", "Iron", "Gold"]
-    suffixes = ["Wolf", "Eagle", "Tiger", "Dragon", "Hawk", "Fox", "Bear", "Lion", "Viper", "Ghost"]
-    return random.choice(prefixes) + random.choice(suffixes) + str(random.randint(10, 999))
+def save_current_index(index):
+    with open(INDEX_FILE, "w") as f:
+        json.dump({"index": index}, f)
+
+def get_next_account():
+    accounts = load_accounts()
+    if not accounts:
+        return None, 0, 0
+
+    index = get_current_index()
+
+    if index >= len(accounts):
+        return None, index, len(accounts)
+
+    account = accounts[index]
+    save_current_index(index + 1)
+    return account, index + 1, len(accounts)
 
 # ==================== EVENTS ====================
 
@@ -86,23 +105,48 @@ async def on_ready():
 
 # ==================== COMMANDS ====================
 
-@tree.command(name="generate", description="Generuje losowe konto (email + haslo + login)")
+@tree.command(name="generate", description="Pobiera konto z listy")
 async def generate(interaction: discord.Interaction):
-    current_count, new_count = load_daily_count_and_increment()
+    account, used, total = get_next_account()
 
-    email = generate_email()
-    password = generate_password()
-    username = generate_username()
+    if account is None and total == 0:
+        embed = Embed(
+            title="❌ Brak kont",
+            description="Plik `accounts.txt` jest pusty lub nie istnieje.",
+            color=Color.red()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    if account is None:
+        embed = Embed(
+            title="❌ Brak kont",
+            description=f"Wszystkie konta zostały rozdane! (`{total}/{total}`)",
+            color=Color.red()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    current_count, new_count = load_daily_count_and_increment()
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    # Parsuj username:haslo
+    if ":" in account:
+        parts = account.split(":", 1)
+        username = parts[0]
+        password = parts[1]
+    else:
+        username = account
+        password = "brak"
+
     embed = Embed(
-        title="🎰 Wygenerowane Konto",
+        title="🎰 Twoje Konto",
         color=Color.blurple()
     )
-    embed.add_field(name="📧 Email", value=f"`{email}`", inline=False)
-    embed.add_field(name="🔑 Haslo", value=f"`{password}`", inline=False)
     embed.add_field(name="👤 Login", value=f"`{username}`", inline=False)
-    embed.add_field(name="📊 Dzisiaj wygenerowano", value=f"`{new_count}` kont", inline=True)
+    embed.add_field(name="🔑 Hasło", value=f"`{password}`", inline=False)
+    embed.add_field(name="📊 Kont pozostało", value=f"`{total - used}` z `{total}`", inline=True)
+    embed.add_field(name="📅 Dziś wydano", value=f"`{new_count}` kont", inline=True)
     embed.set_footer(text=f"Bot v{BOT_VERSION} | {GROUP} | {timestamp}")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -112,6 +156,9 @@ async def generate(interaction: discord.Interaction):
 async def stats(interaction: discord.Interaction):
     data = get_daily_data()
     count = data["count"]
+    accounts = load_accounts()
+    index = get_current_index()
+    remaining = max(0, len(accounts) - index)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     embed = Embed(
@@ -121,7 +168,8 @@ async def stats(interaction: discord.Interaction):
     embed.add_field(name="🤖 Wersja", value=f"`{BOT_VERSION}`", inline=True)
     embed.add_field(name="👨‍💻 Developer", value=f"`{DEVELOPER}`", inline=True)
     embed.add_field(name="🏢 Grupa", value=f"`{GROUP}`", inline=True)
-    embed.add_field(name="📅 Wygenerowano dzis", value=f"`{count}` kont", inline=False)
+    embed.add_field(name="📅 Wydano dziś", value=f"`{count}` kont", inline=False)
+    embed.add_field(name="📦 Kont w stocku", value=f"`{remaining}` z `{len(accounts)}`", inline=False)
     embed.set_footer(text=f"Bot v{BOT_VERSION} | {timestamp}")
 
     await interaction.response.send_message(embed=embed)
@@ -134,8 +182,8 @@ async def help_command(interaction: discord.Interaction):
         description="Lista dostepnych komend:",
         color=Color.blue()
     )
-    embed.add_field(name="/generate", value="Generuje losowe konto (widoczne tylko dla ciebie)", inline=False)
-    embed.add_field(name="/stats", value="Pokazuje statystyki bota", inline=False)
+    embed.add_field(name="/generate", value="Pobiera konto z listy (widoczne tylko dla ciebie)", inline=False)
+    embed.add_field(name="/stats", value="Pokazuje statystyki i ile kont zostalo", inline=False)
     embed.add_field(name="/help", value="Pokazuje te wiadomosc", inline=False)
     embed.set_footer(text=f"Bot v{BOT_VERSION} | {GROUP} | Developer: {DEVELOPER}")
 
