@@ -1,6 +1,7 @@
 import os
 import json
 import secrets
+import random
 import asyncio
 import discord
 from discord import app_commands
@@ -20,18 +21,30 @@ def load_settings():
     with open('settings.json') as f:
         return json.load(f)
 
+def load_proxies():
+    if not os.path.exists('proxy.txt'):
+        return []
+    with open('proxy.txt', 'r', encoding='utf-8') as f:
+        return [line.strip() for line in f if line.strip() and not line.startswith('#')]
+
+def get_random_proxy(proxies):
+    return random.choice(proxies) if proxies else None
+
 def generate_random_username():
     return ''.join(secrets.choice('abcdefghijklmnopqrstuvwxyz0123456789') for _ in range(10))
 
 def generate_strong_password():
     return secrets.token_urlsafe(20)
 
-def write_to_file(username, password):
+def write_to_file(username, password, proxy_used="Brak"):
     with open('accounts.txt', 'a', encoding='utf-8') as f:
-        f.write(f"{username}:{password}\n")
+        f.write(f"{username}:{password} | Proxy: {proxy_used}\n")
 
 async def create_roblox_account():
     settings = load_settings()
+    proxies = load_proxies()
+    proxy = get_random_proxy(proxies)
+
     username = generate_random_username()
     password = generate_strong_password()
 
@@ -47,12 +60,14 @@ async def create_roblox_account():
     options.add_experimental_option('excludeSwitches', ['enable-automation'])
     options.add_experimental_option('useAutomationExtension', False)
 
+    if proxy:
+        options.add_argument(f'--proxy-server={proxy}')
+
     driver = None
     try:
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
         driver.get("https://www.roblox.com/CreateAccount")
 
-        # Czekamy na załadowanie dropdownów
         WebDriverWait(driver, 15).until(
             EC.presence_of_element_located((By.ID, "MonthDropdown"))
         )
@@ -71,46 +86,9 @@ async def create_roblox_account():
         )
         signup_button.click()
 
-        await asyncio.sleep(settings.get("delay", 3))
+        await asyncio.sleep(settings.get("delay", 4))
 
-        write_to_file(username, password)
-        return username, password, True
+        write_to_file(username, password, proxy if proxy else "Brak")
+        return username, password, proxy, True
 
-    except Exception as e:
-        return username, password, f"Błąd: {str(e)}"
-    finally:
-        if driver:
-            driver.quit()
-
-@tree.command(name="generate", description="Wygeneruj 1 konto Roblox (edukacyjnie)")
-async def generate(interaction: discord.Interaction):
-    await interaction.response.defer()
-    await interaction.followup.send("🔄 Tworzę konto... (może potrwać 10-30s)")
-
-    username, password, result = await create_roblox_account()
-
-    if result is True:
-        await interaction.followup.send(
-            f"✅ **Konto utworzone!**\n"
-            f"**Username:** `{username}`\n"
-            f"**Password:** `{password}`\n\n"
-            f"Konto zapisane w `accounts.txt`"
-        )
-    else:
-        await interaction.followup.send(
-            f"❌ Nie udało się utworzyć konta.\n"
-            f"**Username:** `{username}`\n"
-            f"**Błąd:** {result}"
-        )
-
-@tree.command(name="status", description="Sprawdź status bota")
-async def status(interaction: discord.Interaction):
-    await interaction.response.send_message("🟢 Bot działa! Użyj `/generate` aby stworzyć konto.")
-
-@bot.event
-async def on_ready():
-    await tree.sync()
-    print(f"✅ Bot zalogowany jako {bot.user}")
-
-# Uruchomienie bota
-bot.run(os.getenv("DISCORD_TOKEN"))
+    except Exception
