@@ -1,5 +1,5 @@
 {
-  "capsolver_key": "CAP-XXXXXXX",
-  "thread_count": 50,
-  "verify_mail": true
+  "thread_count": 1,
+  "headless": true,
+  "delay": 2
 }
