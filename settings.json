@@ -1,5 +1,6 @@
 {
-  "thread_count": 1,
   "headless": true,
-  "delay": 2
+  "min_delay": 8,
+  "max_delay": 20,
+  "max_accounts_per_command": 5
 }
